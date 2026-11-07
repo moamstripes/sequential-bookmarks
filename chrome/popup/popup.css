@@ -1,0 +1,31 @@
+:root {
+  color-scheme: light dark;
+  font: 13px system-ui, sans-serif;
+}
+
+body {
+  width: 340px;
+  max-height: 480px;
+  margin: 0;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.hint {
+  margin: 0 0 8px;
+  opacity: 0.75;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+label {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 0;
+  cursor: pointer;
+}

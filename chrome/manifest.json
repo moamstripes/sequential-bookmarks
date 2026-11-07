@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Sequential Bookmarks",
+  "version": "1.0.0",
+  "description": "Load the bookmarks of a folder one after another instead of all at once. Local only, no data leaves Chrome.",
+  "minimum_chrome_version": "110",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Sequential Bookmarks: choose the folders to load one by one",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "permissions": ["bookmarks", "tabs", "storage"],
+  "background": {
+    "service_worker": "background.js"
+  }
+}
