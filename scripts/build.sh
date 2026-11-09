@@ -23,7 +23,7 @@ out="$root/dist/sequential-bookmarks-$browser-$version.zip"
 
 rm -rf "$stage" "$out"
 mkdir -p "$stage"
-for item in manifest.json background.js lib popup icons; do
+for item in manifest.json background.js lib options popup icons; do
   [ -e "$src/$item" ] && cp -R "$src/$item" "$stage/$item"
 done
 find "$stage" -name ".DS_Store" -delete

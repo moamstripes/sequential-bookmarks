@@ -1,0 +1,83 @@
+:root {
+  color-scheme: light dark;
+  --border: color-mix(in srgb, currentColor 22%, transparent);
+  --muted: color-mix(in srgb, currentColor 65%, transparent);
+  font: 15px/1.45 system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 24px 16px;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 1.5rem;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.intro,
+.hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+.hint {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+}
+
+.folder {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.folder-head {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.wait input {
+  width: 5em;
+  margin: 0 6px;
+  font: inherit;
+}
+
+fieldset {
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+fieldset label {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+  overflow-wrap: anywhere;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}

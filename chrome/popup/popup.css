@@ -16,6 +16,12 @@ body {
   opacity: 0.75;
 }
 
+button {
+  margin: 0 0 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
 ul {
   margin: 0;
   padding: 0;

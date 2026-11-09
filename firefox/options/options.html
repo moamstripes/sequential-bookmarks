@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sequential Bookmarks settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Sequential Bookmarks</h1>
+      <p class="intro">
+        Ticked folders load one bookmark at a time when you open them with "Open all in tabs". Tick a folder from the bookmark right-click menu
+        (Firefox) or the toolbar popup (Chrome). Changes are saved as you make them.
+      </p>
+      <div id="folders"></div>
+      <p id="empty" hidden>No folders ticked yet.</p>
+    </main>
+    <script src="../lib/sequence.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

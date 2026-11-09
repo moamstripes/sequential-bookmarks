@@ -1,7 +1,8 @@
-const { normaliseUrl, planSequence } = SequentialBookmarks;
+const { normaliseUrl, supportsBookmark, planSequence, burstKeys, belongsToBurst, normaliseFolderSettings, closeTabIds, createLineage } = SequentialBookmarks;
 
-const news = { id: "f1", urls: ["https://a.example/", "https://b.example/x", "https://c.example/"] };
-const entry = (tabId, url) => ({ tabId, url });
+const item = (id, url) => ({ id, url });
+const news = { id: "f1", items: [item("b1", "https://a.example/"), item("b2", "https://b.example/x"), item("b3", "https://c.example/")] };
+const entry = (url) => ({ url });
 
 test("normaliseUrl ignores a trailing slash, surrounding space and the case of the host", () => {
   assertEqual(normaliseUrl(" HTTPS://A.Example/ "), "https://a.example");
@@ -9,47 +10,176 @@ test("normaliseUrl ignores a trailing slash, surrounding space and the case of t
   assertEqual(normaliseUrl("https://a.example/Path"), "https://a.example/Path");
 });
 
-test("a burst covering the whole folder keeps the first bookmark's tab and queues the rest in order", () => {
-  const plan = planSequence([entry(3, "https://c.example/"), entry(1, "https://a.example/"), entry(2, "https://b.example/x")], [news]);
-  assertEqual(plan, {
-    folderId: "f1",
-    keepTabId: 1,
-    closeTabIds: [3, 2],
-    remainingUrls: ["https://b.example/x", "https://c.example/"],
-  });
+test("a burst covering the whole folder matches and returns the folder's bookmarks in order", () => {
+  const plan = planSequence([entry("https://c.example/"), entry("https://a.example/"), entry("https://b.example/x")], [news]);
+  assertEqual(plan, { folderId: "f1", items: news.items });
 });
 
 test("a burst matches even when the browser adds a trailing slash", () => {
-  const folder = { id: "f", urls: ["https://a.example", "https://b.example"] };
-  assertTrue(planSequence([entry(1, "https://a.example/"), entry(2, "https://b.example/")], [folder]));
+  const folder = { id: "f", items: [item("1", "https://a.example"), item("2", "https://b.example")] };
+  assertTrue(planSequence([entry("https://a.example/"), entry("https://b.example/")], [folder]));
+});
+
+test("container bookmark URLs match with their #container suffix", () => {
+  const folder = { id: "f", items: [item("1", "https://a.example/#container-dv"), item("2", "https://b.example/#container-dv")] };
+  assertTrue(planSequence([entry("https://a.example/#container-dv"), entry("https://b.example/#container-dv")], [folder]));
 });
 
 test("a burst covering only part of the folder is ignored", () => {
-  assertEqual(planSequence([entry(1, "https://a.example/"), entry(2, "https://b.example/x")], [news]), null);
+  assertEqual(planSequence([entry("https://a.example/"), entry("https://b.example/x")], [news]), null);
 });
 
 test("a burst with a URL from outside the folder is ignored", () => {
-  const burst = [entry(1, "https://a.example/"), entry(2, "https://b.example/x"), entry(3, "https://other.example/")];
-  assertEqual(planSequence(burst, [news]), null);
+  assertEqual(planSequence([entry("https://a.example/"), entry("https://b.example/x"), entry("https://other.example/")], [news]), null);
 });
 
 test("a folder with one bookmark never triggers", () => {
-  assertEqual(planSequence([entry(1, "https://a.example/")], [{ id: "f", urls: ["https://a.example/"] }]), null);
+  assertEqual(planSequence([entry("https://a.example/")], [{ id: "f", items: [item("1", "https://a.example/")] }]), null);
 });
 
-test("duplicate bookmarks are queued again but still match", () => {
-  const folder = { id: "f", urls: ["https://a.example/", "https://b.example/", "https://a.example/"] };
-  const plan = planSequence([entry(1, "https://a.example/"), entry(2, "https://b.example/"), entry(3, "https://a.example/")], [folder]);
-  assertEqual(plan.keepTabId, 1);
-  assertEqual(plan.closeTabIds, [2, 3]);
-  assertEqual(plan.remainingUrls, ["https://b.example/", "https://a.example/"]);
+test("duplicate bookmarks still match and stay in the sequence", () => {
+  const folder = { id: "f", items: [item("1", "https://a.example/"), item("2", "https://b.example/"), item("3", "https://a.example/")] };
+  const plan = planSequence([entry("https://a.example/"), entry("https://b.example/"), entry("https://a.example/")], [folder]);
+  assertEqual(plan.items.map((i) => i.id), ["1", "2", "3"]);
 });
 
 test("with several ticked folders the matching one is chosen", () => {
-  const other = { id: "f2", urls: ["https://x.example/", "https://y.example/"] };
-  assertEqual(planSequence([entry(7, "https://x.example/"), entry(8, "https://y.example/")], [news, other]).folderId, "f2");
+  const other = { id: "f2", items: [item("x", "https://x.example/"), item("y", "https://y.example/")] };
+  assertEqual(planSequence([entry("https://x.example/"), entry("https://y.example/")], [news, other]).folderId, "f2");
 });
 
 test("no ticked folders means no plan", () => {
-  assertEqual(planSequence([entry(1, "https://a.example/"), entry(2, "https://b.example/x")], []), null);
+  assertEqual(planSequence([entry("https://a.example/"), entry("https://b.example/x")], []), null);
+});
+
+test("folder settings default to no wait and nothing closed", () => {
+  assertEqual(normaliseFolderSettings(undefined), { waitSeconds: 0, closeBookmarkIds: [] });
+  assertEqual(normaliseFolderSettings({}), { waitSeconds: 0, closeBookmarkIds: [] });
+  assertEqual(normaliseFolderSettings("junk"), { waitSeconds: 0, closeBookmarkIds: [] });
+});
+
+test("folder settings keep a valid wait and round it down to whole seconds", () => {
+  assertEqual(normaliseFolderSettings({ waitSeconds: 5 }).waitSeconds, 5);
+  assertEqual(normaliseFolderSettings({ waitSeconds: "7" }).waitSeconds, 7);
+  assertEqual(normaliseFolderSettings({ waitSeconds: 2.9 }).waitSeconds, 2);
+});
+
+test("folder settings reject a negative or unreadable wait and cap a huge one", () => {
+  assertEqual(normaliseFolderSettings({ waitSeconds: -3 }).waitSeconds, 0);
+  assertEqual(normaliseFolderSettings({ waitSeconds: "soon" }).waitSeconds, 0);
+  assertEqual(normaliseFolderSettings({ waitSeconds: 999999 }).waitSeconds, 3600);
+});
+
+test("folder settings keep only distinct string ids to close", () => {
+  assertEqual(normaliseFolderSettings({ closeBookmarkIds: ["a", "b", "a", 5, null] }).closeBookmarkIds, ["a", "b"]);
+  assertEqual(normaliseFolderSettings({ closeBookmarkIds: "a" }).closeBookmarkIds, []);
+});
+
+test("closeTabIds returns the tabs of the chosen bookmarks, in order", () => {
+  const items = [item("b1", "u1"), item("b2", "u2"), item("b3", "u3")];
+  assertEqual(closeTabIds(items, ["b1", "b2"], [11, 12, 13], true), [11, 12]);
+});
+
+test("closeTabIds closes nothing when something did not load", () => {
+  const items = [item("b1", "u1"), item("b2", "u2"), item("b3", "u3")];
+  assertEqual(closeTabIds(items, ["b1", "b2"], [11, 12, 13], false), []);
+});
+
+test("closeTabIds skips bookmarks that never got a tab and ids no longer in the folder", () => {
+  const items = [item("b1", "u1"), item("b2", "u2")];
+  assertEqual(closeTabIds(items, ["b1", "gone"], [undefined, 12], true), []);
+  assertEqual(closeTabIds(items, ["b2", "gone"], [undefined, 12], true), [12]);
+  assertEqual(closeTabIds(items, ["b1", "b2"], [null, 12], true), [12]);
+});
+
+test("lineage: a tab created before the removal becomes the successor", () => {
+  const lineage = createLineage(500);
+  const followed = new Set([5]);
+  assertEqual(lineage.created(8, 1000), null);
+  assertEqual(lineage.removed(5, 1010, (id) => followed.has(id)), { from: 5, to: 8 });
+});
+
+test("lineage: a tab created just after the removal is picked up too", () => {
+  const lineage = createLineage(500);
+  const followed = new Set([5]);
+  assertEqual(lineage.removed(5, 1000, (id) => followed.has(id)), null);
+  assertEqual(lineage.created(8, 1100), { from: 5, to: 8 });
+});
+
+test("lineage: a removal with no new tab in time finds no successor", () => {
+  const lineage = createLineage(500);
+  const followed = new Set([5]);
+  assertEqual(lineage.removed(5, 1000, (id) => followed.has(id)), null);
+  assertEqual(lineage.created(9, 1700), null);
+});
+
+test("lineage: a burst of replacements is paired in order and followed tabs are never successors", () => {
+  const lineage = createLineage(500);
+  const followed = new Set([5, 6, 7]);
+  const isFollowed = (id) => followed.has(id);
+  // 5, 6, 7 were opened first, then each is replaced by 8, 9, 10 (created just before the original is removed)
+  [5, 6, 7].forEach((id, i) => lineage.created(id, 100 + i));
+  assertEqual(lineage.created(8, 200), null);
+  assertEqual(lineage.removed(5, 210, isFollowed), { from: 5, to: 8 });
+  followed.delete(5); followed.add(8);
+  assertEqual(lineage.created(9, 270), null);
+  assertEqual(lineage.removed(6, 280, isFollowed), { from: 6, to: 9 });
+  followed.delete(6); followed.add(9);
+  assertEqual(lineage.created(10, 330), null);
+  assertEqual(lineage.removed(7, 340, isFollowed), { from: 7, to: 10 });
+});
+
+test("lineage: removing a tab nobody follows does nothing", () => {
+  const lineage = createLineage(500);
+  lineage.created(3, 1000);
+  assertEqual(lineage.removed(3, 1010, () => false), null);
+  assertEqual(lineage.created(4, 1020), null);
+});
+
+test("burstKeys drops the #container fragment and duplicates", () => {
+  const items = [item("1", "https://a.example/x#container-dv"), item("2", "https://a.example/x"), item("3", "https://B.example/")];
+  assertEqual(burstKeys(items), ["https://a.example/x", "https://b.example"]);
+});
+
+test("a blank tab belongs to the burst", () => {
+  const keys = burstKeys([item("1", "https://a.example/x#container-dv")]);
+  assertTrue(belongsToBurst("about:blank", keys));
+  assertTrue(belongsToBurst("", keys));
+});
+
+test("a tab on a bookmark, or on the redirect URL wrapped around it, belongs to the burst", () => {
+  const keys = burstKeys([item("1", "https://a.example/x#container-dv")]);
+  assertTrue(belongsToBurst("https://a.example/x", keys));
+  assertTrue(belongsToBurst("http://www.dv.container/https://a.example/x", keys));
+});
+
+test("an unrelated page created at the same moment does not belong to the burst", () => {
+  const keys = burstKeys([item("1", "https://a.example/x#container-dv")]);
+  assertEqual(belongsToBurst("https://other.example/", keys), false);
+  assertEqual(belongsToBurst("about:newtab", keys), false);
+});
+
+test("supportsBookmark accepts the bookmark URL itself and a redirect URL wrapped around it", () => {
+  assertTrue(supportsBookmark("https://a.example/x#container-dv", "https://a.example/x#container-dv"));
+  assertTrue(supportsBookmark("https://a.example/x", "https://a.example/x#container-dv"));
+  assertTrue(supportsBookmark("http://www.dv.container/https://a.example/x", "https://a.example/x#container-dv"));
+  assertEqual(supportsBookmark("https://a.example/other", "https://a.example/x#container-dv"), false);
+});
+
+test("a burst is matched from the replacement tabs even when an original tab was never seen", () => {
+  const folder = { id: "f", items: [item("1", "https://a.example/#container-dv"), item("2", "https://b.example/#container-dv"), item("3", "https://c.example/#container-dv")] };
+  const entries = [
+    entry("https://a.example/#container-dv"),
+    entry("https://b.example/#container-dv"),
+    entry("http://www.dv.container/https://a.example/"),
+    entry("http://www.dv.container/https://b.example/"),
+    entry("http://www.dv.container/https://c.example/"),
+  ];
+  assertTrue(planSequence(entries, [folder]));
+});
+
+test("a wrapped URL for a bookmark outside the folder stops the match", () => {
+  const folder = { id: "f", items: [item("1", "https://a.example/#container-dv"), item("2", "https://b.example/#container-dv")] };
+  const entries = [entry("https://a.example/#container-dv"), entry("https://b.example/#container-dv"), entry("http://www.dv.container/https://z.example/")];
+  assertEqual(planSequence(entries, [folder]), null);
 });

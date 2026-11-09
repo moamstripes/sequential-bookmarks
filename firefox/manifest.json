@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sequential Bookmarks",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Load the bookmarks of a folder one after another instead of all at once. Local only, no data leaves Firefox.",
   "browser_specific_settings": {
     "gecko": {
@@ -16,8 +16,12 @@
     "48": "icons/icon.svg",
     "96": "icons/icon.svg"
   },
-  "permissions": ["menus", "bookmarks", "tabs", "storage"],
+  "permissions": ["menus", "bookmarks", "tabs", "storage", "webNavigation"],
   "background": {
     "scripts": ["lib/sequence.js", "lib/core.js", "background.js"]
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
   }
 }
