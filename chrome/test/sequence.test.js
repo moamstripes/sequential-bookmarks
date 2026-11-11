@@ -1,4 +1,4 @@
-const { normaliseUrl, supportsBookmark, planSequence, burstKeys, belongsToBurst, normaliseFolderSettings, closeTabIds, createLineage } = SequentialBookmarks;
+const { normaliseUrl, supportsBookmark, planSequence, burstKeys, belongsToBurst, normaliseFolderSettings, looksLikeLogin, loadState, closeTabIds, createLineage } = SequentialBookmarks;
 
 const item = (id, url) => ({ id, url });
 const news = { id: "f1", items: [item("b1", "https://a.example/"), item("b2", "https://b.example/x"), item("b3", "https://c.example/")] };
@@ -52,10 +52,11 @@ test("no ticked folders means no plan", () => {
   assertEqual(planSequence([entry("https://a.example/"), entry("https://b.example/x")], []), null);
 });
 
-test("folder settings default to no wait and nothing closed", () => {
-  assertEqual(normaliseFolderSettings(undefined), { waitSeconds: 0, closeBookmarkIds: [] });
-  assertEqual(normaliseFolderSettings({}), { waitSeconds: 0, closeBookmarkIds: [] });
-  assertEqual(normaliseFolderSettings("junk"), { waitSeconds: 0, closeBookmarkIds: [] });
+test("folder settings default to no wait, nothing closed and no login wait (2 minutes once switched on)", () => {
+  const defaults = { waitSeconds: 0, closeBookmarkIds: [], waitForLogin: false, loginBookmarkIds: [], loginWaitMinutes: 2 };
+  assertEqual(normaliseFolderSettings(undefined), defaults);
+  assertEqual(normaliseFolderSettings({}), defaults);
+  assertEqual(normaliseFolderSettings("junk"), defaults);
 });
 
 test("folder settings keep a valid wait and round it down to whole seconds", () => {
@@ -73,6 +74,60 @@ test("folder settings reject a negative or unreadable wait and cap a huge one", 
 test("folder settings keep only distinct string ids to close", () => {
   assertEqual(normaliseFolderSettings({ closeBookmarkIds: ["a", "b", "a", 5, null] }).closeBookmarkIds, ["a", "b"]);
   assertEqual(normaliseFolderSettings({ closeBookmarkIds: "a" }).closeBookmarkIds, []);
+});
+
+test("folder settings keep only distinct string ids that may ask for a login", () => {
+  assertEqual(normaliseFolderSettings({ loginBookmarkIds: ["a", "a", 7, "b"] }).loginBookmarkIds, ["a", "b"]);
+  assertEqual(normaliseFolderSettings({ loginBookmarkIds: null }).loginBookmarkIds, []);
+  assertEqual(normaliseFolderSettings({ closeBookmarkIds: ["x"] }).loginBookmarkIds, []);
+});
+
+test("the login wait is on only when explicitly switched on", () => {
+  assertEqual(normaliseFolderSettings({ waitForLogin: true }).waitForLogin, true);
+  assertEqual(normaliseFolderSettings({ waitForLogin: "true" }).waitForLogin, false);
+  assertEqual(normaliseFolderSettings({ waitForLogin: false }).waitForLogin, false);
+});
+
+test("the login wait keeps whole minutes between 1 and 60 and otherwise falls back", () => {
+  assertEqual(normaliseFolderSettings({ loginWaitMinutes: 5 }).loginWaitMinutes, 5);
+  assertEqual(normaliseFolderSettings({ loginWaitMinutes: "10" }).loginWaitMinutes, 10);
+  assertEqual(normaliseFolderSettings({ loginWaitMinutes: 2.9 }).loginWaitMinutes, 2);
+  assertEqual(normaliseFolderSettings({ loginWaitMinutes: 999 }).loginWaitMinutes, 60);
+  assertEqual(normaliseFolderSettings({ loginWaitMinutes: 0 }).loginWaitMinutes, 2);
+  assertEqual(normaliseFolderSettings({ loginWaitMinutes: -4 }).loginWaitMinutes, 2);
+  assertEqual(normaliseFolderSettings({ loginWaitMinutes: "soon" }).loginWaitMinutes, 2);
+});
+
+test("looksLikeLogin recognises login hosts and login paths", () => {
+  assertTrue(looksLikeLogin("https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=x"));
+  assertTrue(looksLikeLogin("https://eu-central-1.signin.aws/platform/login?workflowStateHandle=abc"));
+  assertTrue(looksLikeLogin("https://accounts.google.com/v3/signin/identifier"));
+  assertTrue(looksLikeLogin("https://tenant.auth0.com/u/login?state=x"));
+  assertTrue(looksLikeLogin("https://example.com/users/sign_in"));
+  assertTrue(looksLikeLogin("https://example.com/Account/Login.aspx?ReturnUrl=%2f"));
+  assertTrue(looksLikeLogin("http://127.0.0.1:8765/login"));
+  assertTrue(looksLikeLogin("https://sso.example.com/"));
+});
+
+test("looksLikeLogin leaves ordinary pages alone, even with login words in the query or fragment", () => {
+  assertEqual(looksLikeLogin("https://novamedia.awsapps.com/start/#/console?account_id=1&role_name=DataEngineer"), false);
+  assertEqual(looksLikeLogin("https://eu-central-1.console.aws.amazon.com/sagemaker/home?region=eu-central-1#/studio-landing"), false);
+  assertEqual(looksLikeLogin("https://example.com/news?next=/login#sign-in"), false);
+  assertEqual(looksLikeLogin("https://example.com/blog/login-tips"), false);
+  assertEqual(looksLikeLogin("https://example.com/authors"), false);
+});
+
+test("looksLikeLogin is false for blank, non-web and unreadable addresses", () => {
+  assertEqual(looksLikeLogin("about:blank"), false);
+  assertEqual(looksLikeLogin("moz-extension://abc/login/index.html"), false);
+  assertEqual(looksLikeLogin(""), false);
+  assertEqual(looksLikeLogin(undefined), false);
+});
+
+test("loadState: a bookmark that lands on a login page is waiting for a login, unless it is itself the login page", () => {
+  assertEqual(loadState("https://login.example.com/start", "https://app.example.com/home"), "login");
+  assertEqual(loadState("https://app.example.com/home", "https://app.example.com/home"), "loaded");
+  assertEqual(loadState("https://login.example.com/start", "https://login.example.com/start"), "loaded");
 });
 
 test("closeTabIds returns the tabs of the chosen bookmarks, in order", () => {

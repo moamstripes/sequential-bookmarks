@@ -19,13 +19,15 @@ scripts/   build.sh, bump-version.sh, make-icons.py (Chrome PNGs, standard libra
 .github/workflows/release.yml   tag -> GitHub release with a zip per browser
 ```
 
+Also in `firefox/`: `listing.md` (the answers for a listed submission on addons.mozilla.org, not part of the package) and `listing-screenshots/`.
+
 Inside each browser folder: `manifest.json`, `background.js`, `lib/sequence.js` (pure logic, unit tested), `lib/core.js` (browser logic), `options/` (settings page), `icons/`, `test/`.
 
 ## How it works
 
-`lib/core.js` listens to `webNavigation.onBeforeNavigate` and `tabs.onUpdated`. A tab heading for a bookmark of a ticked folder (the bookmark URL, or a redirect URL wrapped around it, see `supportsBookmark`) joins a "burst". When the burst has been quiet for 500 ms (3 s at most), `planSequence` checks whether it covers exactly one ticked folder's bookmarks. If so, everything the open produced is closed: the member tabs, plus tabs created in the 1.5 s before and still blank or on a bookmark (`belongsToBurst`). Then the bookmarks are opened one at a time where the first tab was (first one active), each after the previous tab is complete on a real page and has stayed complete for 1 s (`SETTLE_MS`), then `waitSeconds` more. A step gives up after 30 s. When all are done and every one loaded, the tabs of the bookmarks listed in `closeBookmarkIds` are closed.
+`lib/core.js` listens to `webNavigation.onBeforeNavigate` and `tabs.onUpdated`. A tab heading for a bookmark of a ticked folder (the bookmark URL, or a redirect URL wrapped around it, see `supportsBookmark`) joins a "burst". When the burst has been quiet for 500 ms (3 s at most), `planSequence` checks whether it covers exactly one ticked folder's bookmarks. If so, everything the open produced is closed: the member tabs, plus tabs created in the 1.5 s before and still blank or on a bookmark (`belongsToBurst`). Then the bookmarks are opened one at a time where the first tab was (first one active), each after the previous tab is complete on a real page and has stayed complete for 1 s (`SETTLE_MS`), then `waitSeconds` more. A step gives up after 30 s, except, when the folder's `waitForLogin` is on, a bookmark in `loginBookmarkIds` that settles on a login-looking address (`looksLikeLogin`, from the host and path only, and never when the bookmark itself looks like a login): it is waited for until it settles on another page, up to `loginWaitMinutes` (1 to 60, default 2), and if that runs out the whole sequence stops (the rest is not opened, nothing is closed). When all are done and every one loaded, the tabs of the bookmarks listed in `closeBookmarkIds` are closed.
 
-Storage (`storage.local`): `tickedFolders` (folder ids) and `folderSettings` (`{ [folderId]: { waitSeconds, closeBookmarkIds } }`, defaults in `normaliseFolderSettings`: wait 0, nothing closed). Running sequences are in `storage.session` (`runningSequences`) and resumed if the background script unloads; a 20 s keep-alive stops it unloading during a wait.
+Storage (`storage.local`): `tickedFolders` (folder ids) and `folderSettings` (`{ [folderId]: { waitSeconds, closeBookmarkIds, waitForLogin, loginBookmarkIds, loginWaitMinutes } }`, defaults in `normaliseFolderSettings`: wait 0, nothing closed, login wait off). Running sequences are in `storage.session` (`runningSequences`) and resumed if the background script unloads; a 20 s keep-alive stops it unloading during a wait.
 
 Following a replaced tab (steps only): Multi-Account Containers answers a navigation by creating a new tab and removing the old one. `createLineage` pairs the removed tab with the tab created just before (or just after) it, and `waitForLoaded` then waits for the new one.
 
@@ -63,6 +65,8 @@ Use throwaway profiles and delete them afterwards. The tab-labels repo's `CLAUDE
 - A freshly created Firefox tab can report `status: complete` for `about:blank` before its page starts, so "loaded" means complete, not `about:blank`, and still complete 1 s later.
 - A tab can start navigating before its id is known to the extension, so `ownUrls` remembers the URL being opened for 3 s as well as `ownTabs`.
 - Chrome's `chrome.storage.local.get` was seen stalling for several seconds in headless Chrome. The folder list is loaded ahead of time (`folders()` after every invalidation) so a burst does not wait on it.
+- `tabs.remove([ids])` in Firefox rejects the whole call, closing nothing, if one id no longer exists (checked). Close tabs one at a time.
 - The `bookmark` menu context needs the `bookmarks` permission, and the same items are shown for bookmarks and folders, so `menus.onShown` hides them for bookmarks.
 - `webNavigation` is a permission that Firefox asks the user to approve again on update.
 - Mozilla rejects a version number it has already signed, so each signed Firefox release needs a new version.
+- A version number is used up as soon as Mozilla has signed it in either channel. Pushing a `firefox-vX.Y.Z` tag signs that version as unlisted, so never push the tag of a version that is meant for the listed channel (1.1.1 was signed as unlisted on 11-11-2026 for exactly that reason, so that 1.2.0 stays free for the first listed submission; 1.2.0 must not be tagged before it is approved).

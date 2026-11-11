@@ -11,7 +11,8 @@ Manifest V3 with a service worker. Chrome has no way for an extension to add an 
 1. Click the toolbar icon: every bookmark folder is listed with its path. Tick one, close the popup and reopen it: it is still ticked.
 2. With a three-bookmark folder ticked, right-click it on the bookmarks bar and choose **Open all**: the first page loads, the second only starts when the first has finished (plus a second), then the third. The tabs end up in bookmark order.
 3. Click **Settings** in the popup: the folder is listed. Set the wait to 5 and open the folder again: each page now starts about 6 seconds after the previous one finished.
-4. Tick the first two bookmarks under "Close when everything has loaded" and open the folder: when the third has loaded, the first two close.
+4. Switch on "Wait for a login" in the settings and tick a bookmark that needs a login, log out of that site and open the folder: the rest waits on the sign-in page until you have logged in, and loading stops after the minutes you set if you do not.
+5. Tick the first two bookmarks under "Close when everything has loaded" and open the folder: when the third has loaded, the first two close.
 5. Close the second tab while it is loading: the third still loads and nothing is closed.
 6. Untick the folder and open it again: all pages load at once. Open a single bookmark of a ticked folder: it opens normally.
 

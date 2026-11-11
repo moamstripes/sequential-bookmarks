@@ -6,7 +6,7 @@
 
   // storage.local keys.
   const TICKED_KEY = "tickedFolders"; // array of ticked folder ids
-  const SETTINGS_KEY = "folderSettings"; // { [folderId]: { waitSeconds, closeBookmarkIds } }
+  const SETTINGS_KEY = "folderSettings"; // { [folderId]: { waitSeconds, closeBookmarkIds, waitForLogin, loginBookmarkIds, loginWaitMinutes } }
 
   // How long no new tab activity may happen before a burst of tabs counts as finished, and the longest a burst may go on.
   const BURST_QUIET_MS = 500;
@@ -18,6 +18,10 @@
   // A page only counts as fully loaded once it has stayed "complete" this long, so redirects
   // done by the page itself (scripts, meta refresh) are waited for.
   const SETTLE_MS = 1000;
+  // How many minutes a bookmark that may need a login can sit on a login page before the sequence gives up.
+  const DEFAULT_LOGIN_WAIT_MINUTES = 2;
+  const MIN_LOGIN_WAIT_MINUTES = 1;
+  const MAX_LOGIN_WAIT_MINUTES = 60;
   // How close in time a tab's removal and its replacement's creation must be for them to belong together.
   const SUCCESSOR_WINDOW_MS = 500;
 
@@ -76,8 +80,41 @@
     const settings = raw && typeof raw === "object" ? raw : {};
     const wait = Math.floor(Number(settings.waitSeconds));
     const waitSeconds = Number.isFinite(wait) && wait >= 0 ? Math.min(wait, MAX_WAIT_SECONDS) : DEFAULT_WAIT_SECONDS;
-    const ids = Array.isArray(settings.closeBookmarkIds) ? settings.closeBookmarkIds.filter((id) => typeof id === "string") : [];
-    return { waitSeconds, closeBookmarkIds: [...new Set(ids)] };
+    const minutes = Math.floor(Number(settings.loginWaitMinutes));
+    const loginWaitMinutes = Number.isFinite(minutes) && minutes >= MIN_LOGIN_WAIT_MINUTES ? Math.min(minutes, MAX_LOGIN_WAIT_MINUTES) : DEFAULT_LOGIN_WAIT_MINUTES;
+    const ids = (list) => [...new Set(Array.isArray(list) ? list.filter((id) => typeof id === "string") : [])];
+    return {
+      waitSeconds,
+      closeBookmarkIds: ids(settings.closeBookmarkIds),
+      waitForLogin: settings.waitForLogin === true,
+      loginBookmarkIds: ids(settings.loginBookmarkIds),
+      loginWaitMinutes,
+    };
+  }
+
+  // Whether a URL looks like a login page, judged from its address alone: a host such as login.example.com or
+  // eu-central-1.signin.aws, or a path with a segment such as /login, /sign-in, /sso, /oauth2 or /authorize.
+  const LOGIN_HOST_LABELS = ["login", "signin", "sign-in", "sso", "auth", "adfs", "idp"];
+  const LOGIN_HOSTS = ["accounts.google.com", "appleid.apple.com"];
+  const LOGIN_HOST_ENDINGS = [".auth0.com", ".b2clogin.com"];
+  const LOGIN_PATH_SEGMENT = /^(log-?in|log_in|sign-?in|sign_in|sso|oauth2?|authorize|saml2?|auth|authenticate|adfs|openid-connect)(\.[a-z]+)?$/;
+
+  function looksLikeLogin(url) {
+    const parts = /^https?:\/\/(?:[^/?#@]*@)?([^/?#:]+)(?::\d+)?([^?#]*)/i.exec(String(url).trim());
+    if (!parts) return false;
+    const host = parts[1].toLowerCase();
+    if (LOGIN_HOSTS.includes(host) || LOGIN_HOST_ENDINGS.some((end) => host.endsWith(end))) return true;
+    if (host.split(".").some((label) => LOGIN_HOST_LABELS.includes(label))) return true;
+    return parts[2]
+      .toLowerCase()
+      .split("/")
+      .some((segment) => LOGIN_PATH_SEGMENT.test(segment));
+  }
+
+  // What a bookmark that may need a login shows once it has loaded: "login" while the tab sits on a login page
+  // (and the bookmark itself is not one), otherwise "loaded".
+  function loadState(tabUrl, bookmarkUrl) {
+    return looksLikeLogin(tabUrl) && !looksLikeLogin(bookmarkUrl) ? "login" : "loaded";
   }
 
   // items: the folder's bookmarks, tabIds: the tab of each (same order, undefined when never opened).
@@ -123,6 +160,9 @@
     BURST_MAX_MS,
     BURST_LOOKBACK_MS,
     LOAD_TIMEOUT_MS,
+    DEFAULT_LOGIN_WAIT_MINUTES,
+    MIN_LOGIN_WAIT_MINUTES,
+    MAX_LOGIN_WAIT_MINUTES,
     SETTLE_MS,
     SUCCESSOR_WINDOW_MS,
     DEFAULT_WAIT_SECONDS,
@@ -133,6 +173,8 @@
     burstKeys,
     belongsToBurst,
     normaliseFolderSettings,
+    looksLikeLogin,
+    loadState,
     closeTabIds,
     createLineage,
   };

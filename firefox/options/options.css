@@ -58,6 +58,18 @@ h2 {
   font: inherit;
 }
 
+.toggle {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 16px 0 0;
+  font-weight: 600;
+}
+
+.login [hidden] {
+  display: none;
+}
+
 fieldset {
   margin: 16px 0 0;
   padding: 0;

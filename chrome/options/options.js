@@ -1,9 +1,9 @@
-// The settings page: one card per ticked folder with the wait between tabs and which bookmarks to close
-// at the end. Identical in both browsers. lib/core.js reads what is saved here when a sequence starts.
+// The settings page: one card per ticked folder with the wait between tabs, which bookmarks may ask for a login
+// and which to close at the end. Identical in both browsers. lib/core.js reads what is saved here when a sequence starts.
 "use strict";
 
 const api = typeof browser !== "undefined" ? browser : chrome;
-const { TICKED_KEY, SETTINGS_KEY, MAX_WAIT_SECONDS, normaliseFolderSettings } = SequentialBookmarks;
+const { TICKED_KEY, SETTINGS_KEY, MAX_WAIT_SECONDS, MIN_LOGIN_WAIT_MINUTES, MAX_LOGIN_WAIT_MINUTES, normaliseFolderSettings } = SequentialBookmarks;
 
 // Saves are queued so two quick changes cannot overwrite each other.
 let saving = Promise.resolve();
@@ -57,19 +57,47 @@ function folderCard(folderId, folder, settings) {
     element("p", { className: "hint", textContent: "Counted from the moment a page has finished loading, redirects included. 0 opens the next one straight away." })
   );
 
-  const boxes = folder.bookmarks.map((bookmark) => {
-    const box = element("input", { type: "checkbox", checked: settings.closeBookmarkIds.includes(bookmark.id) });
-    box.addEventListener("change", () => {
-      saveSettings(folderId, { closeBookmarkIds: boxes.filter((b) => b.input.checked).map((b) => b.id) });
+  // One checkbox per bookmark, saved under the given setting.
+  const checkboxes = (setting) => {
+    const boxes = folder.bookmarks.map((bookmark) => {
+      const box = element("input", { type: "checkbox", checked: settings[setting].includes(bookmark.id) });
+      box.addEventListener("change", () => {
+        saveSettings(folderId, { [setting]: boxes.filter((b) => b.input.checked).map((b) => b.id) });
+      });
+      return { id: bookmark.id, input: box, label: element("label", {}, box, bookmark.title || bookmark.url) };
     });
-    return { id: bookmark.id, input: box, label: element("label", {}, box, bookmark.title || bookmark.url) };
+    return boxes.map((b) => b.label);
+  };
+  // The toggle shows the minutes and the bookmark list only while it is on.
+  const toggle = element("input", { type: "checkbox", checked: settings.waitForLogin });
+  const minutes = element("input", { type: "number", min: MIN_LOGIN_WAIT_MINUTES, max: MAX_LOGIN_WAIT_MINUTES, step: 1, value: settings.loginWaitMinutes });
+  const loginDetails = element(
+    "div",
+    { hidden: !settings.waitForLogin },
+    element("label", { className: "wait" }, "Give up after", minutes, "minutes"),
+    element("fieldset", {}, element("legend", { textContent: "Might ask you to log in" }), ...checkboxes("loginBookmarkIds")),
+    element("p", {
+      className: "hint",
+      textContent:
+        "If a ticked bookmark ends up on a login page, the rest waits while you log in and carries on once the tab moves to another page. " +
+        "A page counts as a login page when its address looks like one (words such as login, sign-in or sso). " +
+        "If you have not finished in time, loading stops there and nothing is closed.",
+    })
+  );
+  toggle.addEventListener("change", () => {
+    loginDetails.hidden = !toggle.checked;
+    saveSettings(folderId, { waitForLogin: toggle.checked });
+  });
+  minutes.addEventListener("change", async () => {
+    minutes.value = (await saveSettings(folderId, { loginWaitMinutes: minutes.value })).loginWaitMinutes;
   });
   card.append(
+    element("div", { className: "login" }, element("label", { className: "toggle" }, toggle, "Wait for a login"), loginDetails),
     element(
       "fieldset",
       {},
       element("legend", { textContent: "Close when everything has loaded" }),
-      ...boxes.map((b) => b.label),
+      ...checkboxes("closeBookmarkIds"),
       element("p", { className: "hint", textContent: "Ticked bookmarks are closed once every bookmark in the folder has loaded. Nothing is closed if one of them failed to load." })
     )
   );

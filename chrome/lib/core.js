@@ -160,6 +160,8 @@
       items: plan.items,
       waitSeconds: settings.waitSeconds,
       closeBookmarkIds: settings.closeBookmarkIds,
+      loginBookmarkIds: settings.waitForLogin ? settings.loginBookmarkIds : [],
+      loginWaitMs: settings.loginWaitMinutes * 60000,
       windowId,
       index,
       next: 0, // the bookmark to open next
@@ -196,25 +198,42 @@
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // Resolves "loaded", "timeout" or "closed" for the tab in sequence.current, following it if it is replaced.
+  // Resolves "loaded", "timeout", "closed" or "login" for the tab in sequence.current, following it if it is replaced.
   // Loaded means complete on a real page and staying complete for SETTLE_MS (no further redirect started).
+  // For a bookmark that may need a login, a tab that settles on a login page keeps being waited for (the load
+  // timeout no longer applies) until it settles on another page, or the folder's login wait passes and the result is "login".
   // The tab is being followed as soon as this is called, so call it right after the tab is created.
   function waitForLoaded(sequence) {
     return new Promise((resolve) => {
       let tabId = sequence.current;
       const position = sequence.next;
+      const item = sequence.items[position];
+      const mayNeedLogin = (sequence.loginBookmarkIds || []).includes(item.id);
       let settleTimer = null;
+      let loginTimer = null;
+      let loadTimer = null;
       const isLoaded = (tab) => tab.status === "complete" && tab.url && tab.url !== "about:blank";
       const finish = (result) => {
         clearTimeout(loadTimer);
+        clearTimeout(loginTimer);
         clearTimeout(settleTimer);
         watchers.delete(tabId);
         api.tabs.onUpdated.removeListener(onUpdated);
         resolve(result);
       };
+      const settled = (tab) => {
+        settleTimer = null;
+        if (mayNeedLogin && S.loadState(tab.url, item.url) === "login") {
+          // Waiting for the person to log in: from here only the login limit applies.
+          clearTimeout(loadTimer);
+          if (!loginTimer) loginTimer = setTimeout(() => finish("login"), sequence.loginWaitMs || S.DEFAULT_LOGIN_WAIT_MINUTES * 60000);
+          return;
+        }
+        finish("loaded");
+      };
       const check = (tab) => {
         if (isLoaded(tab)) {
-          if (!settleTimer) settleTimer = setTimeout(() => finish("loaded"), S.SETTLE_MS);
+          if (!settleTimer) settleTimer = setTimeout(() => settled(tab), S.SETTLE_MS);
         } else {
           clearTimeout(settleTimer);
           settleTimer = null;
@@ -223,7 +242,7 @@
       const onUpdated = (id, change, tab) => {
         if (id === tabId) check(tab);
       };
-      const loadTimer = setTimeout(() => finish("timeout"), S.LOAD_TIMEOUT_MS);
+      loadTimer = setTimeout(() => finish("timeout"), S.LOAD_TIMEOUT_MS);
       watchers.set(tabId, {
         replaced: (newId) => {
           tabId = newId;
@@ -283,7 +302,9 @@
       }
       const waiting = waitForLoaded(sequence);
       await saveRunning();
-      if ((await waiting) !== "loaded") sequence.allLoaded = false;
+      const result = await waiting;
+      if (result !== "loaded") sequence.allLoaded = false;
+      if (result === "login") break; // never logged in: the rest would load without a session, so stop here
       sequence.next += 1;
       sequence.current = null;
       if (sequence.next < sequence.items.length && sequence.waitSeconds > 0) {
@@ -292,7 +313,8 @@
       await saveRunning();
     }
     const toClose = S.closeTabIds(sequence.items, sequence.closeBookmarkIds, sequence.tabIds, sequence.allLoaded);
-    if (toClose.length) await api.tabs.remove(toClose).catch(() => {});
+    // One at a time: a single tab that no longer exists must not stop the others from closing.
+    await Promise.all(toClose.map((id) => api.tabs.remove(id).catch(() => {})));
   }
 
   // After the background script was unloaded mid-sequence, carry on where it stopped.
