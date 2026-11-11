@@ -5,7 +5,7 @@ Everything to paste into the Developer Hub on addons.mozilla.org to list the add
 ## Before you start
 
 1. **File to upload:** `dist/sequential-bookmarks-firefox-1.2.0.zip` (12 KB, eight files, nothing but the runtime files). Rebuild it with `bash scripts/build.sh firefox` if you change anything.
-2. **Version number:** 1.2.0. Versions 1.0.0, 1.1.0 and 1.1.1 were already signed as unlisted (1.1.1 is the same code as 1.2.0, signed on purpose so that 1.2.0 stays free), and Mozilla does not accept a number it has used before, in either channel.
+2. **Version number:** 1.2.0. Versions 1.0.0, 1.1.0, 1.1.1 and 1.1.2 already exist on Mozilla (1.1.2 is the same code as 1.2.0, signed as unlisted for private use so that 1.2.0 stays free), and Mozilla does not accept a number it has used before, in either channel.
 3. **Do not push a `firefox-v1.2.0` tag.** The release workflow would sign 1.2.0 as an unlisted version and use up the number, and the listed upload would then be refused. After the listed version is approved, push the tag only if you also want a GitHub release (see "After approval").
 4. **Where to go:** the add-on already exists on Mozilla as an unlisted add-on, so open its page on the Developer Hub (my best guess is https://addons.mozilla.org/en-US/developers/addon/a736fe1615c542bbadf2/, taken from the name of the signed file; check it against your own list) and choose to upload a new version. Otherwise use Submit a New Add-on.
 5. **Your public name:** the developer name shown on the listing comes from your Mozilla account's display name. Check it first, so it is not your full name unless you want that.
